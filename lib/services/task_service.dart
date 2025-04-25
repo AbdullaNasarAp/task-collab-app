@@ -50,6 +50,9 @@ class TaskService {
     required String title,
     required String description,
     List<String>? sharedWith,
+    bool isCompleted = false,
+    String priority = 'none',
+    Timestamp? dueDate,
   }) async {
     final email = currentUserEmail;
     if (email.isEmpty) throw Exception('User not authenticated');
@@ -59,10 +62,13 @@ class TaskService {
       id: id,
       title: title,
       description: description,
-      ownerEmail: email, // Critical for security rules
+      ownerEmail: email,
       sharedWith: sharedWith ?? [email],
       createdAt: Timestamp.now(),
       updatedAt: Timestamp.now(),
+      isCompleted: isCompleted,
+      priority: priority,
+      dueDate: dueDate,
     );
 
     await _taskRef.doc(id).set(task.toMap());
@@ -91,7 +97,6 @@ class TaskService {
       throw Exception('Cannot share with yourself');
     }
 
-    // Verify current user has permission to share
     final doc = await _taskRef.doc(taskId).get();
     if (!doc.exists) throw Exception('Task not found');
 
@@ -140,7 +145,6 @@ class TaskService {
     return _removeDuplicates([...ownedTasks, ...sharedTasks]);
   }
 
-  // Helper methods
   List<TaskModel> _convertSnapshot(QuerySnapshot snapshot) {
     return snapshot.docs.map((doc) {
       return TaskModel.fromMap(doc.data()! as Map<String, dynamic>, doc.id);

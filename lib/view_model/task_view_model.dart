@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:task_collab_app/model/task_model.dart';
 import 'package:task_collab_app/services/task_service.dart';
@@ -11,6 +12,7 @@ class TaskViewModel extends ChangeNotifier {
   List<TaskModel> get tasks => _tasks;
 
   bool isLoading = false;
+  String _currentFilter = 'All'; // Track current filter
 
   Future<void> fetchTasks() async {
     isLoading = true;
@@ -22,14 +24,21 @@ class TaskViewModel extends ChangeNotifier {
   }
 
   Stream<List<TaskModel>> get taskStream {
-    return _taskService.streamTasks(); // Now matches the service
+    return _taskService.streamTasks();
   }
 
   Future<void> addTask({
     required String title,
     required String description,
+    String priority = 'none',
+    DateTime? dueDate,
   }) async {
-    await _taskService.createTask(title: title, description: description);
+    await _taskService.createTask(
+      title: title,
+      description: description,
+      priority: priority,
+      dueDate: dueDate != null ? Timestamp.fromDate(dueDate) : null,
+    );
     await fetchTasks();
   }
 
@@ -58,5 +67,58 @@ class TaskViewModel extends ChangeNotifier {
         ).showSnackBar(SnackBar(content: Text('Failed to share task: $e')));
       }
     }
+  }
+
+  Future<void> updateTask(TaskModel updatedTask) async {
+    try {
+      await _taskService.updateTask(updatedTask);
+      await fetchTasks();
+    } catch (e) {
+      debugPrint('Error updating task: $e');
+      rethrow;
+    }
+  }
+
+  void setFilter(String filter) {
+    _currentFilter = filter;
+    notifyListeners();
+  }
+
+  List<TaskModel> get filteredTasks {
+    final now = DateTime.now();
+    final todayStart = DateTime(now.year, now.month, now.day);
+    final todayEnd = todayStart.add(const Duration(days: 1));
+
+    return _tasks.where((task) {
+      switch (_currentFilter) {
+        case 'Today':
+          if (task.dueDate == null) return false;
+          final dueDate = task.dueDate!.toDate();
+          return dueDate.isAfter(todayStart) && dueDate.isBefore(todayEnd);
+        case 'Completed':
+          return task.isCompleted;
+        case 'Shared':
+          return task.sharedWith.length > 1; // More than just owner
+        case 'High Priority':
+          return task.priority == 'high';
+        case 'All':
+        default:
+          return true;
+      }
+    }).toList();
+  }
+
+  // Stats for the UI
+  Map<String, int> get taskStats {
+    final now = DateTime.now();
+    final todayStart = DateTime(now.year, now.month, now.day);
+    todayStart.add(const Duration(days: 1));
+
+    return {
+      'Total': _tasks.length,
+      'Completed': _tasks.where((t) => t.isCompleted).length,
+      'Pending': _tasks.where((t) => !t.isCompleted).length,
+      'Shared': _tasks.where((t) => t.sharedWith.length > 1).length,
+    };
   }
 }
